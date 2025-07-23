@@ -21,16 +21,20 @@ def gen_qr(user_id):
     code1 = "otpauth://totp/Google%20Authenticator:"
     code2 = "?secret="
     code3 = "&issuer=Google%20Authenticator"
-
+    
     secret = base64.b32encode(generate_shared_secret()).decode('utf-8')     # generate secret key
     
     # TODO: combine code# and user id to create URI (hint: match example URI format given above)
     uri = None
+    uri = f"{code1}{user_id}{code2}{secret}{code3}"
     print(" >> URI generated: ", uri)
 
     # TODO: store secret into a file named "secret.txt"
-    file = None
 
+    file='secret.txt'
+    with open(file, 'w') as f:
+        f.write(secret)
+   
     # TODO: generate QR code based on the URI using snego library
     qrcode = segno.make(uri, micro=False)
     qrcode.save('qr_code.png')
@@ -39,45 +43,48 @@ def gen_qr(user_id):
 
 
 # ========= function for generating the One-Time Password ========
+import time, hmac, base64, struct, hashlib
+
 def generate_otp(secret_base32, digits=6, time_step=30):
-    # decode the base32-encoded secret string into raw bytes
+    # 1. Decode secret
     key = base64.b32decode(secret_base32, casefold=True)
 
-    # TODO: get the current time step
-    current_time = None
-    counter = None
+    # 2. Get current time step
+    counter = int(time.time() // time_step)
 
-    # convert the counter to an 8-byte big-endian byte array
+    # 3. Pack time step counter into 8-byte big-endian
     counter_bytes = struct.pack(">Q", counter)
 
-    # create an HMAC-SHA1 hash using the secret key and the counter
+    # 4. Generate HMAC-SHA1 digest
     hmac_hash = hmac.new(key, counter_bytes, hashlib.sha1).digest()
 
-    # the dynamic offset is the last nibble (4 bits) of the HMAC
-    # this chooses where to start slicing the hash
-    offset = hmac_hash[-1] & 0x0F       # value between 0 and 15
+    # 5. Dynamic truncation offset
+    offset = hmac_hash[-1] & 0x0F
 
-    # TODO: take 4 bytes of hmac hash starting at the offset
-    selected_bytes = None
+    # 6. Get 4 bytes from HMAC starting at offset
+    selected_bytes = hmac_hash[offset:offset+4]
 
-    # convert those 4 bytes to a big-endian integer
+    # 7. Convert 4 bytes to 32-bit int
     code_int = struct.unpack(">I", selected_bytes)[0]
 
-    # TODO: remove the sign bit; Hint: 0x7FFFFFFF = 0111 1111 1111 1111 1111 1111 1111 1111
-    code_int = None
+    # 8. Remove sign bit
+    code_int = code_int & 0x7FFFFFFF
 
-    # TODO: get only 6 digits; Hint: mod 10^?
-    otp = None
+    # 9. Get last `digits` (default 6)
+    otp = code_int % (10 ** digits)
 
-    return otp
-
+    # Pad with leading zeros if needed
+    return str(otp).zfill(digits)
 
 # ========= function for displaying OPT every 30 sec ========
 def get_otp(t=30):
     # TODO: open and read file containing secret; Hint: use readline
-    file = None
-    secret = None
-    file.close()
+    file = 'secret.txt'
+    with open(file, 'r') as f:
+        secret = f.readline().strip()
+        
+    
+    #file.close()
 
     while True:
         otp = generate_otp(secret)
